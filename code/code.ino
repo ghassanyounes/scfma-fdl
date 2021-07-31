@@ -29,8 +29,8 @@
 #define MISCELLA 26
 #define CLEARBTT 27
 
-#define NEXTBUTT 35
-#define PREVBUTT  0
+#define BTMBUTT 35
+#define TOPBUTT  0
 
 #define BATTHIGH 12
 #define BATT_LOW 13
@@ -54,8 +54,8 @@ Button2 po(PROTEINS); // proteins (fish, chicken, meat, et cetera
 Button2 pe(PREPARED); // prepared meals
 Button2 ms(MISCELLA); // miscellaneous
 Button2 cl(CLEARBTT); // clear (upper button)
-Button2 btm(NEXTBUTT); // bottom onboard button
-Button2 top(PREVBUTT); // top onboard button
+Button2 btm(BTMBUTT); // bottom onboard button
+Button2 top(TOPBUTT); // top onboard button
 
 //! Long time delay, it is recommended to use shallow sleep, which can effectively reduce the current consumption
 void espDelay(int ms)
@@ -150,26 +150,24 @@ void setup() {
 //  pinMode(ADC_EN, OUTPUT);
 //  digitalWrite(ADC_EN, HIGH);
 
-  tft.init();
-  tft.setRotation(3);
-  // Fill background
-  tft.fillScreen(TFT_GREY);
-  // Set cursor to front, use font #4
-  tft.setCursor(0,0,4);
-  // Set color to be white
-  tft.setTextColor(TFT_WHITE); 
+  tft.init();                   // Initialize display
+  tft.setRotation(3);           // Set display to the correct orientation
+  tft.fillScreen(TFT_GREY);     // Fill background  
+  tft.setCursor(0,0,4);         // Set cursor to front, use font #4
+  tft.setTextColor(TFT_WHITE);  // Set color to be white
 
-  button_init();
+  button_init();                // Initialize buttons
+  // set cache values to -1 since they will increase by 1 upon first read
   fruit = -1, egg = -1, prot = -1, prep = -1, misc = -1;
 }
 
 void loop() {
   tft.setCursor(0,0,4); // Set cursor to first line, first column, use font #4
   // Print the variables
-  tft.print(" Misc.: "); tft.println(misc);
-  tft.print(" Proteins: "); tft.println(prot);
-  tft.print(" Fruit: "); tft.println(fruit);
-  tft.print(" Prepared: "); tft.println(prep);
+  tft.print(" Misc.: ");     tft.println(misc);
+  tft.print(" Proteins: ");  tft.println(prot);
+  tft.print(" Fruit: ");     tft.println(fruit);
+  tft.print(" Prepared: ");  tft.println(prep);
   tft.print(" Egg/Dairy: "); tft.println(egg);
 
   // Button loop
