@@ -17,10 +17,11 @@
   When going to sleep store cache in flash memory and erase cache 
 */
 #include <TFT_eSPI.h> // graphics and font library
-#include <SPI.h>
-#include "Button2.h"
+#include "Button2.h"  // Buttons library
 
+// Constants - colors and GPIO pins
 #define TFT_GREY 0x5AEB // New color
+
 #define FRUITVEG 36
 #define EGGDAIRY 37
 #define PROTEINS 38
@@ -39,18 +40,22 @@
 
 
 TFT_eSPI tft = TFT_eSPI(); // Invoke library, pins defined in user_setup.h
-int counter = 0;
+// instantiate and intialize cache variables
 int fruit = 0, egg = 0, prot = 0, prep = 0, misc = 0;
+// if button pressed
 bool btnClick = false;
+// if initialized
 bool init_ = false;
-Button2 fv(FRUITVEG);
-Button2 ed(EGGDAIRY);
-Button2 po(PROTEINS);
-Button2 pe(PREPARED);
-Button2 ms(MISCELLA);
-Button2 cl(CLEARBTT);
-Button2 nx(NEXTBUTT);
-Button2 pv(PREVBUTT);
+
+// Enable the buttons 
+Button2 fv(FRUITVEG); // fruit/veg
+Button2 ed(EGGDAIRY); // eggs and dairy
+Button2 po(PROTEINS); // proteins (fish, chicken, meat, et cetera
+Button2 pe(PREPARED); // prepared meals
+Button2 ms(MISCELLA); // miscellaneous
+Button2 cl(CLEARBTT); // clear (upper button)
+Button2 btm(NEXTBUTT); // bottom onboard button
+Button2 top(PREVBUTT); // top onboard button
 
 //! Long time delay, it is recommended to use shallow sleep, which can effectively reduce the current consumption
 void espDelay(int ms)
@@ -66,7 +71,8 @@ void reset(int fm, int em, int pom, int pem, int mm) {
 
 void button_init()
 {
-    pv.setLongClickHandler([](Button2 & b) {
+  // Force long sleep by using small on-board button
+    top.setLongClickHandler([](Button2 & b) {
         btnClick = false;
         int r = digitalRead(TFT_BL);
         tft.fillScreen(TFT_BLACK);
@@ -85,46 +91,40 @@ void button_init()
         delay(200);
         esp_deep_sleep_start();
     });
-    
+
+
+    //Short button click event handling
     fv.setPressedHandler([](Button2 & b) {
-        //Serial.println("Detect Voltage..");
         ++fruit;
         btnClick = true;
     });
     ed.setPressedHandler([](Button2 & b) {
-        //Serial.println("Detect Voltage..");
         ++egg;
         btnClick = true;
     });
 
     po.setPressedHandler([](Button2 & b) {
-        //Serial.println("Detect Voltage..");
         ++prot;
         btnClick = true;
     });
 
     pe.setPressedHandler([](Button2 & b) {
-        //Serial.println("Detect Voltage..");
         ++prep;
         btnClick = true;
     });
 
     ms.setPressedHandler([](Button2 & b) {
-        //Serial.println("Detect Voltage..");
         ++misc;
         btnClick = true;
     });
     
     cl.setPressedHandler([](Button2 & b) {
-        //Serial.println("Detect Voltage..");
         reset(fruit, egg, prot, prep, misc);
         btnClick = true;
     });
 
-    nx.setPressedHandler([](Button2 & b) {
+    btm.setPressedHandler([](Button2 & b) {
         btnClick = true;
-        //Serial.println("btn press wifi scan");
-        //wifi_scan();
     });
 }
 
@@ -164,17 +164,18 @@ void setup() {
 }
 
 void loop() {
-  // Print a line
-  tft.setCursor(0,0,4);
+  tft.setCursor(0,0,4); // Set cursor to first line, first column, use font #4
+  // Print the variables
   tft.print(" Misc.: "); tft.println(misc);
   tft.print(" Proteins: "); tft.println(prot);
   tft.print(" Fruit: "); tft.println(fruit);
   tft.print(" Prepared: "); tft.println(prep);
   tft.print(" Egg/Dairy: "); tft.println(egg);
-  
+
+  // Button loop
   if (btnClick) {
-    btnClick = false;
-    tft.fillScreen(TFT_GREY);
+    btnClick = false; // reset trigger state after it was pressed
+    tft.fillScreen(TFT_GREY); // Clear the screen 
   }
-  button_loop();
+  button_loop(); // Loop through and poll the buttons.
 }
