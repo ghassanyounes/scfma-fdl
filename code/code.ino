@@ -1,3 +1,21 @@
+/* CODE TO DO LIST:
+> Buttons increment counters for each of the food groups, which is stored in a flash memory to ensure it can be read when rebooted after complete power loss 
+
+> will stay in deep sleep mode for majority of time, only waking up to trigger the battery LED every 2 seconds 
+
+> wakes up with a button press and that button is logged (for user experience) 
+
+> Screen will also show current values with the wake-up for the battery LED
+
+> ADC for solar and Battery, if battery below 20% activate red light, otherwise green
+
+> Display flash memory on screen
+
+> timer starts when waking from sleep - 10m - external timer variable likely necessary 
+  All button entry goes to cache
+  If clear button is pressed erase cache and reset timer
+  When going to sleep store cache in flash memory and erase cache 
+*/
 #include <TFT_eSPI.h> // graphics and font library
 #include <SPI.h>
 #include "Button2.h"
