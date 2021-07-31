@@ -136,8 +136,8 @@ void button_loop()
   pe.loop();
   ms.loop();
   cl.loop();
-  nx.loop();
-  pv.loop();
+  btm.loop();
+  top.loop();
 }
 
 void setup() {
