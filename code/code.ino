@@ -18,6 +18,12 @@
 */
 #include <TFT_eSPI.h> // graphics and font library
 #include "Button2.h"  // Buttons library
+#include <Preferences.h> // Data Logging
+
+// 10 minutes: 600000000
+//  7 minutes: 420000000
+//  5 minutes: 300000000
+#define TIME_AWAKE 600000000
 
 // Constants - colors and GPIO pins
 #define TFT_GREY 0x5AEB // New color
@@ -35,17 +41,26 @@
 #define BATTHIGH 12
 #define BATT_LOW 13
 
+// bit value 111100000001110000000000000000000000000
+// aka pins 38,37,36 et cetera
+#define PINS 0x780E000000
+
+
 #define ADC_BATT 15
 #define ADCSOLAR  2
 
 
 TFT_eSPI tft = TFT_eSPI(); // Invoke library, pins defined in user_setup.h
 // instantiate and intialize cache variables
+int counter = 0;
 int fruit = 0, egg = 0, prot = 0, prep = 0, misc = 0;
+int f_fruit = 0, f_egg = 0, f_prot = 0, f_prep = 0, f_misc = 0;
 // if button pressed
 bool btnClick = false;
 // if initialized
 bool init_ = false;
+
+Preferences prefs; // Data to be preserved after reboots
 
 // Enable the buttons 
 Button2 fv(FRUITVEG); // fruit/veg
@@ -71,61 +86,84 @@ void reset(int fm, int em, int pom, int pem, int mm) {
 
 void button_init()
 {
-  // Force long sleep by using small on-board button
-    top.setLongClickHandler([](Button2 & b) {
-        btnClick = false;
-        int r = digitalRead(TFT_BL);
-        tft.fillScreen(TFT_BLACK);
-        tft.setTextColor(TFT_GREEN, TFT_BLACK);
-        tft.setTextDatum(MC_DATUM);
-        tft.drawString("Press again to wake up",  tft.width() / 2, tft.height() / 2 );
-        espDelay(6000);
-        digitalWrite(TFT_BL, !r);
+    btnClick = true;
+// // Force long sleep by using small on-board button
+//   top.setLongClickHandler([](Button2 & b) {
+//       btnClick = false;
+//       int r = digitalRead(TFT_BL);
+//       tft.fillScreen(TFT_BLACK);
+//       tft.setTextColor(TFT_GREEN, TFT_BLACK);
+//       tft.setTextDatum(MC_DATUM);
+//       tft.drawString("Press again to wake up",  tft.width() / 2, tft.height() / 2 );
+//       espDelay(6000);
+//       digitalWrite(TFT_BL, !r);
 
-        tft.writecommand(TFT_DISPOFF);
-        tft.writecommand(TFT_SLPIN);
-        //After using light sleep, you need to disable timer wake, because here use external IO port to wake up
-        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
-        // esp_sleep_enable_ext1_wakeup(GPIO_SEL_35, ESP_EXT1_WAKEUP_ALL_LOW);
-        esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, 0);
-        delay(200);
-        esp_deep_sleep_start();
-    });
+//       tft.writecommand(TFT_DISPOFF);
+//       tft.writecommand(TFT_SLPIN);
+//       //After using light sleep, you need to disable timer wake, because here use external IO port to wake up
+//       esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+//       // esp_sleep_enable_ext1_wakeup(GPIO_SEL_35, ESP_EXT1_WAKEUP_ALL_LOW);
+//       //esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, 0);
+//       delay(200);
+//       esp_deep_sleep_start();
+//   });
 
 
-    //Short button click event handling
-    fv.setPressedHandler([](Button2 & b) {
-        ++fruit;
-        btnClick = true;
-    });
-    ed.setPressedHandler([](Button2 & b) {
-        ++egg;
-        btnClick = true;
-    });
+  //Short button click event handling
+  fv.setPressedHandler([](Button2 & b) {
+    ++fruit;
+  });
+  ed.setPressedHandler([](Button2 & b) {
+      ++egg;
+  });
 
-    po.setPressedHandler([](Button2 & b) {
-        ++prot;
-        btnClick = true;
-    });
+  po.setPressedHandler([](Button2 & b) {
+    ++prot;
+  });
 
-    pe.setPressedHandler([](Button2 & b) {
-        ++prep;
-        btnClick = true;
-    });
+  pe.setPressedHandler([](Button2 & b) {
+    ++prep;
+  });
 
-    ms.setPressedHandler([](Button2 & b) {
-        ++misc;
-        btnClick = true;
-    });
-    
-    cl.setPressedHandler([](Button2 & b) {
-        reset(fruit, egg, prot, prep, misc);
-        btnClick = true;
-    });
+  ms.setPressedHandler([](Button2 & b) {
+    ++misc;
+  });
+  
+  cl.setPressedHandler([](Button2 & b) {
+    reset(fruit, egg, prot, prep, misc);
+  });
 
-    btm.setPressedHandler([](Button2 & b) {
-        btnClick = true;
-    });
+  btm.setPressedHandler([](Button2 & b) {
+    btnClick = true;
+  });
+}
+
+void store() { 
+  f_fruit += fruit;
+  f_egg   += egg;
+  f_prot  += prot;
+  f_prep  += prep;
+  f_misc  += misc;
+  prefs.putUInt("fruit", f_fruit);
+  prefs.putUInt("egg"  , f_egg  );
+  prefs.putUInt("prot" , f_prot );
+  prefs.putUInt("prep" , f_prep );
+  prefs.putUInt("misc" , f_misc );
+  fruit = 0;
+  egg   = 0;
+  prot  = 0;
+  prep  = 0;
+  misc  = 0;
+}
+
+void go_sleep() {
+  store();
+  esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+  // esp_sleep_enable_ext0_wakeup(PINNUM, level);
+  // enable wakeup on pin PINNUM, level: 1 if active high, 0 if active low.
+  esp_sleep_enable_ext0_wakeup(static_cast<gpio_num_t>(PINS), 1);
+
+  esp_deep_sleep_start();  
 }
 
 void button_loop() 
@@ -140,7 +178,40 @@ void button_loop()
   top.loop();
 }
 
+bool woke = false;
+void wakeup() {
+  uint64_t GPIO_reason = esp_sleep_get_ext1_wakeup_status();
+  uint64_t pin = (log(GPIO_reason))/log(2);
+  if(woke) {
+    switch (pin) { 
+      case FRUITVEG:
+        ++fruit;
+        break;
+      case EGGDAIRY:
+        ++egg;
+        break;
+      case PROTEINS:
+        ++prot;
+        break;
+      case PREPARED:
+        ++prep;
+        break;
+      case MISCELLA:
+        ++misc;
+        break;
+      case CLEARBTT:
+        reset(fruit, egg, prot, prep, misc);
+        break;
+      default:
+        break;
+    }
+  }
+  woke = false;
+}
+
 void setup() {
+  // Create a namespace named 'valies' in the preferences object;
+  prefs.begin("values", false);
   
   /*
   ADC_EN is the ADC detection enable port
@@ -159,21 +230,33 @@ void setup() {
   button_init();                // Initialize buttons
   // set cache values to -1 since they will increase by 1 upon first read
   fruit = -1, egg = -1, prot = -1, prep = -1, misc = -1;
+  wakeup();
 }
 
 void loop() {
   tft.setCursor(0,0,4); // Set cursor to first line, first column, use font #4
   // Print the variables
-  tft.print(" Misc.: ");     tft.println(misc);
-  tft.print(" Proteins: ");  tft.println(prot);
-  tft.print(" Fruit: ");     tft.println(fruit);
-  tft.print(" Prepared: ");  tft.println(prep);
-  tft.print(" Egg/Dairy: "); tft.println(egg);
+  f_fruit = prefs.getUInt("fruit", f_fruit);
+  f_egg   = prefs.getUInt("egg"  , f_egg  );
+  f_prot  = prefs.getUInt("prot" , f_prot );
+  f_prep  = prefs.getUInt("prep" , f_prep );
+  f_misc  = prefs.getUInt("misc" , f_misc );
+  tft.print(" Misc.: ");       tft.println(f_misc  + misc );
+  tft.print(" Proteins: ");    tft.println(f_prot  + prot );
+  tft.print(" Fruit & Veg: "); tft.println(f_fruit + fruit);
+  tft.print(" Prepared: ");    tft.println(f_prep  + prep );
+  tft.print(" Egg/Dairy: ");   tft.println(f_egg   + egg  );
 
   // Button loop
   if (btnClick) {
     btnClick = false; // reset trigger state after it was pressed
     tft.fillScreen(TFT_GREY); // Clear the screen 
   }
-  button_loop(); // Loop through and poll the buttons.
+  ++counter;
+  if (counter != TIME_AWAKE)
+    button_loop(); // Loop through and poll the buttons.
+  else {
+    woke = true;
+    go_sleep();
+  }
 }
