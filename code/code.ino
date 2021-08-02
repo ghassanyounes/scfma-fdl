@@ -23,7 +23,7 @@
 // 10 minutes: 600000000
 //  7 minutes: 420000000
 //  5 minutes: 300000000
-#define TIME_AWAKE 600000000
+#define TIME_AWAKE 600
 
 // Constants - colors and GPIO pins
 #define TFT_GREY 0x5AEB // New color
@@ -58,7 +58,7 @@ int f_fruit = 0, f_egg = 0, f_prot = 0, f_prep = 0, f_misc = 0;
 // if button pressed
 bool btnClick = false;
 // if initialized
-bool init_ = false;
+int init_ = 0;
 
 Preferences prefs; // Data to be preserved after reboots
 
@@ -86,7 +86,8 @@ void reset(int fm, int em, int pom, int pem, int mm) {
 
 void button_init()
 {
-    btnClick = true;
+  tft.fillScreen(TFT_GREY); // Clear the screen 
+  btnClick = true;
 // // Force long sleep by using small on-board button
 //   top.setLongClickHandler([](Button2 & b) {
 //       btnClick = false;
@@ -111,29 +112,36 @@ void button_init()
 
   //Short button click event handling
   fv.setPressedHandler([](Button2 & b) {
+    tft.fillScreen(TFT_GREY); // Clear the scree
     ++fruit;
   });
   ed.setPressedHandler([](Button2 & b) {
-      ++egg;
+    tft.fillScreen(TFT_GREY); // Clear the scree
+    ++egg;
   });
 
   po.setPressedHandler([](Button2 & b) {
+    tft.fillScreen(TFT_GREY); // Clear the scree
     ++prot;
   });
 
   pe.setPressedHandler([](Button2 & b) {
+    tft.fillScreen(TFT_GREY); // Clear the scree
     ++prep;
   });
 
   ms.setPressedHandler([](Button2 & b) {
+    tft.fillScreen(TFT_GREY); // Clear the scree
     ++misc;
   });
   
   cl.setPressedHandler([](Button2 & b) {
+    tft.fillScreen(TFT_GREY); // Clear the scree
     reset(fruit, egg, prot, prep, misc);
   });
 
   btm.setPressedHandler([](Button2 & b) {
+    tft.fillScreen(TFT_GREY); // Clear the scree
     btnClick = true;
   });
 }
@@ -158,10 +166,14 @@ void store() {
 
 void go_sleep() {
   store();
+  tft.fillScreen(TFT_GREY);
+  tft.setCursor(100,100);
+  tft.println("Device Asleep");
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
   // esp_sleep_enable_ext0_wakeup(PINNUM, level);
   // enable wakeup on pin PINNUM, level: 1 if active high, 0 if active low.
-  esp_sleep_enable_ext0_wakeup(static_cast<gpio_num_t>(PINS), 1);
+  //esp_sleep_enable_ext0_wakeup(static_cast<gpio_num_t>(PINS), 1);
+  esp_sleep_enable_ext1_wakeup(static_cast<gpio_num_t>(PINS), ESP_EXT1_WAKEUP_ANY_HIGH);
 
   esp_deep_sleep_start();  
 }
@@ -210,7 +222,7 @@ void wakeup() {
 }
 
 void setup() {
-  // Create a namespace named 'valies' in the preferences object;
+  // Create a namespace named 'values' in the preferences object;
   prefs.begin("values", false);
   
   /*
@@ -231,6 +243,7 @@ void setup() {
   // set cache values to -1 since they will increase by 1 upon first read
   fruit = -1, egg = -1, prot = -1, prep = -1, misc = -1;
   wakeup();
+  tft.fillScreen(TFT_GREY); // Clear the screen 
 }
 
 void loop() {
@@ -241,11 +254,15 @@ void loop() {
   f_prot  = prefs.getUInt("prot" , f_prot );
   f_prep  = prefs.getUInt("prep" , f_prep );
   f_misc  = prefs.getUInt("misc" , f_misc );
-  tft.print(" Misc.: ");       tft.println(f_misc  + misc );
-  tft.print(" Proteins: ");    tft.println(f_prot  + prot );
-  tft.print(" Fruit & Veg: "); tft.println(f_fruit + fruit);
-  tft.print(" Prepared: ");    tft.println(f_prep  + prep );
-  tft.print(" Egg/Dairy: ");   tft.println(f_egg   + egg  );
+  int col = 195; // The column to align all the numbers to 
+  tft.print(" Miscellaneous: " ); tft.setCursor(col,tft.getCursorY()); tft.println(f_misc  + misc );
+  tft.print(" Meat & Poultry: "); tft.setCursor(col,tft.getCursorY()); tft.println(f_prot  + prot );
+  tft.print(" Fruit & Veg.: "  ); tft.setCursor(col,tft.getCursorY()); tft.println(f_fruit + fruit);
+  tft.print(" Prepared Meals: "); tft.setCursor(col,tft.getCursorY()); tft.println(f_prep  + prep );
+  tft.print(" Egg & Dairy: "   ); tft.setCursor(col,tft.getCursorY()); tft.println(f_egg   + egg  );
+  if (init_ == 5)
+    tft.fillScreen(TFT_GREY); // Clear the screen 
+  ++init_;
 
   // Button loop
   if (btnClick) {
@@ -253,7 +270,7 @@ void loop() {
     tft.fillScreen(TFT_GREY); // Clear the screen 
   }
   ++counter;
-  if (counter != TIME_AWAKE)
+  if (counter <= TIME_AWAKE)
     button_loop(); // Loop through and poll the buttons.
   else {
     woke = true;
