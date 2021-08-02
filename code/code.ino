@@ -19,11 +19,13 @@
 #include <TFT_eSPI.h> // graphics and font library
 #include "Button2.h"  // Buttons library
 #include <Preferences.h> // Data Logging
+#include <string>
+using std::string;
 
 // 10 minutes: 600000000
 //  7 minutes: 420000000
 //  5 minutes: 300000000
-#define TIME_AWAKE 600
+#define TIME_AWAKE 1000
 
 // Constants - colors and GPIO pins
 #define TFT_GREY 0x5AEB // New color
@@ -41,9 +43,8 @@
 #define BATTHIGH 12
 #define BATT_LOW 13
 
-// bit value 111100000001110000000000000000000000000
-// aka pins 38,37,36 et cetera
-#define PINS 0x780E000000
+// the active pins (38,37,36 et cetera) to wake up the device
+#define PINS 1 << FRUITVEG | 1 << EGGDAIRY | 1 << PROTEINS | 1 << PREPARED | 1 << MISCELLA | 1 << CLEARBTT
 
 
 #define ADC_BATT 15
@@ -59,6 +60,8 @@ int f_fruit = 0, f_egg = 0, f_prot = 0, f_prep = 0, f_misc = 0;
 bool btnClick = false;
 // if initialized
 int init_ = 0;
+double battery_level = 0.0;
+double solar_level = 0.0;
 
 Preferences prefs; // Data to be preserved after reboots
 
@@ -112,36 +115,71 @@ void button_init()
 
   //Short button click event handling
   fv.setPressedHandler([](Button2 & b) {
-    tft.fillScreen(TFT_GREY); // Clear the scree
+    btnClick = true;
+    tft.fillScreen(TFT_GREY); // Clear the screen
     ++fruit;
   });
   ed.setPressedHandler([](Button2 & b) {
-    tft.fillScreen(TFT_GREY); // Clear the scree
+    btnClick = true;
+    tft.fillScreen(TFT_GREY); // Clear the screen
     ++egg;
   });
 
   po.setPressedHandler([](Button2 & b) {
-    tft.fillScreen(TFT_GREY); // Clear the scree
+    btnClick = true;
+    tft.fillScreen(TFT_GREY); // Clear the screen
     ++prot;
   });
 
   pe.setPressedHandler([](Button2 & b) {
-    tft.fillScreen(TFT_GREY); // Clear the scree
+    btnClick = true;
+    tft.fillScreen(TFT_GREY); // Clear the screen
     ++prep;
   });
 
   ms.setPressedHandler([](Button2 & b) {
-    tft.fillScreen(TFT_GREY); // Clear the scree
+    btnClick = true;
+    tft.fillScreen(TFT_GREY); // Clear the screen
     ++misc;
   });
   
   cl.setPressedHandler([](Button2 & b) {
-    tft.fillScreen(TFT_GREY); // Clear the scree
+    btnClick = true;
+    tft.fillScreen(TFT_GREY); // Clear the screen
     reset(fruit, egg, prot, prep, misc);
   });
 
+  // Erase everything while long clicking the clear button
+  btm.setLongClickHandler([](Button2 & b) {
+    btnClick = true;
+    tft.fillScreen(TFT_GREY); // Clear the screen
+    tft.setCursor(0,0,4);         // Set cursor to front, use font #4
+    tft.setTextColor(TFT_RED);  // Set color to be red
+    tft.println("!! TOTAL RESET !!");
+    delay(5000);
+    tft.fillScreen(TFT_GREY); // Clear the screen
+    tft.setTextColor(TFT_WHITE);  // Set color to be red
+    prefs.putUInt("fruit", 0);
+    prefs.putUInt("egg"  , 0);
+    prefs.putUInt("prot" , 0);
+    prefs.putUInt("prep" , 0);
+    prefs.putUInt("misc" , 0);
+    fruit = 0;
+    egg   = 0;
+    prot  = 0;
+    prep  = 0;
+    misc  = 0;
+  });
+
   btm.setPressedHandler([](Button2 & b) {
-    tft.fillScreen(TFT_GREY); // Clear the scree
+    tft.fillScreen(TFT_GREY); // Clear the screen
+    tft.setCursor(0,0,4);         // Set cursor to front, use font #4
+    tft.setTextColor(TFT_RED);  // Set color to be red
+    tft.print("Battery Status "); tft.println(battery_level);
+    tft.print("Solar Status "); tft.println(solar_level);
+    delay(5000);
+    tft.fillScreen(TFT_GREY); // Clear the screen
+    tft.setTextColor(TFT_WHITE);  // Set color to be white
     btnClick = true;
   });
 }
@@ -167,15 +205,20 @@ void store() {
 void go_sleep() {
   store();
   tft.fillScreen(TFT_GREY);
-  tft.setCursor(100,100);
+  tft.setCursor(25,50);
   tft.println("Device Asleep");
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
-  // esp_sleep_enable_ext0_wakeup(PINNUM, level);
-  // enable wakeup on pin PINNUM, level: 1 if active high, 0 if active low.
-  //esp_sleep_enable_ext0_wakeup(static_cast<gpio_num_t>(PINS), 1);
   esp_sleep_enable_ext1_wakeup(static_cast<gpio_num_t>(PINS), ESP_EXT1_WAKEUP_ANY_HIGH);
 
-  esp_deep_sleep_start();  
+#if 1
+  // DEEP SLEEP //
+  esp_deep_sleep_start();
+#else 
+  // LIGHT SLEEP //
+  gpio_wakeup_enable(static_cast<gpio_num_t>(PINS), GPIO_INTR_HIGH_LEVEL);
+  esp_sleep_enable_gpio_wakeup();
+  esp_light_sleep_start();
+#endif
 }
 
 void button_loop() 
@@ -190,35 +233,50 @@ void button_loop()
   top.loop();
 }
 
-bool woke = false;
 void wakeup() {
+  static bool once = false;
+  //if (!once) {
   uint64_t GPIO_reason = esp_sleep_get_ext1_wakeup_status();
   uint64_t pin = (log(GPIO_reason))/log(2);
-  if(woke) {
+    string output;
     switch (pin) { 
       case FRUITVEG:
         ++fruit;
+        output = "fruit";
         break;
       case EGGDAIRY:
         ++egg;
+        output = "dairy";
         break;
       case PROTEINS:
         ++prot;
+        output = "protein";
         break;
       case PREPARED:
         ++prep;
+        output = "prep";
         break;
       case MISCELLA:
+        output = "misc";
         ++misc;
         break;
       case CLEARBTT:
-        reset(fruit, egg, prot, prep, misc);
+        output = "clear";
         break;
       default:
         break;
     }
-  }
-  woke = false;
+    tft.fillScreen(TFT_GREY); // Clear the screen
+    tft.setCursor(0,0,4);         // Set cursor to front, use font #4
+    tft.setTextColor(TFT_RED);  // Set color to be red
+    tft.print("Awoken by pin " ); tft.println(output.c_str());
+    tft.print("Battery Status "); tft.println(battery_level);
+    tft.print("Solar Status "  ); tft.println(solar_level);
+    delay(1000);
+    tft.fillScreen(TFT_GREY); // Clear the screen
+    tft.setTextColor(TFT_WHITE);  // Set color to be white
+    //once = true;
+  //}
 }
 
 void setup() {
@@ -242,8 +300,7 @@ void setup() {
   button_init();                // Initialize buttons
   // set cache values to -1 since they will increase by 1 upon first read
   fruit = -1, egg = -1, prot = -1, prep = -1, misc = -1;
-  wakeup();
-  tft.fillScreen(TFT_GREY); // Clear the screen 
+
 }
 
 void loop() {
@@ -260,20 +317,26 @@ void loop() {
   tft.print(" Fruit & Veg.: "  ); tft.setCursor(col,tft.getCursorY()); tft.println(f_fruit + fruit);
   tft.print(" Prepared Meals: "); tft.setCursor(col,tft.getCursorY()); tft.println(f_prep  + prep );
   tft.print(" Egg & Dairy: "   ); tft.setCursor(col,tft.getCursorY()); tft.println(f_egg   + egg  );
-  if (init_ == 5)
+  if (init_ == 10) {
     tft.fillScreen(TFT_GREY); // Clear the screen 
-  ++init_;
+    wakeup();
+    ++init_;
+  } else {
+    ++init_;
+  }
 
   // Button loop
   if (btnClick) {
     btnClick = false; // reset trigger state after it was pressed
     tft.fillScreen(TFT_GREY); // Clear the screen 
+    counter = 0;
   }
   ++counter;
   if (counter <= TIME_AWAKE)
     button_loop(); // Loop through and poll the buttons.
   else {
-    woke = true;
+    counter = 0;
     go_sleep();
+    wakeup();
   }
 }
