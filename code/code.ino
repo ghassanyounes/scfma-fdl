@@ -22,12 +22,13 @@
 #include <string>
 using std::string;
 
-//#define DEEP_SLEEP
+#define DEEP_SLEEP
 
 // 10 minutes: 600000000
 //  7 minutes: 420000000
 //  5 minutes: 300000000
 #define TIME_AWAKE 5000
+#define SMALL_TIME TIME_AWAKE/100
 
 // Constants - colors and GPIO pins
 #define TFT_GREY 0x5AEB // New color
@@ -53,17 +54,17 @@ using std::string;
 #define ADC_SOL 32
 
 bool clear1 = false, clear2 = false, clear3 = false;
-
+int timepassed = 0;
 TFT_eSPI tft = TFT_eSPI();  // Invoke library, pins defined in user_setup.h
 int counter = 0;            // Counter for time to sleep
 int fruit = 0, egg = 0, prot = 0, prep = 0, misc = 0;           // instantiate and intialize cache variables
 int f_fruit = 0, f_egg = 0, f_prot = 0, f_prep = 0, f_misc = 0; // instantiate and initialize flash storage
-bool btnClick = false; // if a button is pressed
-int init_ = 0; // if initialized check
+bool btnClick = false;      // if a button is pressed
+int init_ = 0;              // if initialized check
 double battery_level = 0.0; // checks the battery level
 double solar_level = 0.0;   // checks the solar panel power level
-
-Preferences prefs; // Data to be preserved after reboots
+int cleartimer = 0;         // To allow for multiple scans of all the buttons for a hard reset
+Preferences prefs;          // Data to be preserved after reboots
 
 // Enable the buttons 
 Button2 b_fruitveg(FRUITVEG); // fruit/veg
@@ -76,9 +77,9 @@ Button2 btm(BTMBUTT); // bottom onboard button
 Button2 top(TOPBUTT); // top onboard button
 
 //! For longer delays it's best to use light sleep, especially to reduce current consumption
-void espDelay(int b_miscella)
+void espDelay(int milli)
 {
-    esp_sleep_enable_timer_wakeup(b_miscella * 1000);
+    esp_sleep_enable_timer_wakeup(milli * 1000);
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
     esp_light_sleep_start();
 }
@@ -90,7 +91,7 @@ void reset(int fm, int em, int pom, int pem, int mm) {
 
 void hardreset() {
   tft.fillScreen(TFT_GREY);     // Clear the screen
-  tft.setCursor(25,50,4);         // Set cursor to front, use font #4
+  tft.setCursor(20,50,4);         // Set cursor to front, use font #4
   tft.setTextColor(TFT_RED);    // Set color to be red
   tft.println("!! TOTAL RESET !!");
   delay(5000);
@@ -116,35 +117,41 @@ void button_init()
 
   //Short button click event handling
   b_fruitveg.setPressedHandler([](Button2 & b) {
+    prefs.putBool("timer_wakeup", false);
     btnClick = true;
     tft.fillScreen(TFT_GREY); // Clear the screen
     ++fruit;
   });
   b_eggdairy.setPressedHandler([](Button2 & b) {
+    prefs.putBool("timer_wakeup", false);
     btnClick = true;
     tft.fillScreen(TFT_GREY); // Clear the screen
     ++egg;
   });
 
   b_proteins.setPressedHandler([](Button2 & b) {
+    prefs.putBool("timer_wakeup", false);
     btnClick = true;
     tft.fillScreen(TFT_GREY); // Clear the screen
     ++prot;
   });
 
   b_prepared.setPressedHandler([](Button2 & b) {
+    prefs.putBool("timer_wakeup", false);
     btnClick = true;
     tft.fillScreen(TFT_GREY); // Clear the screen
     ++prep;
   });
 
   b_miscella.setPressedHandler([](Button2 & b) {
+    prefs.putBool("timer_wakeup", false);
     btnClick = true;
     tft.fillScreen(TFT_GREY); // Clear the screen
     ++misc;
   });
   
   b_clear.setPressedHandler([](Button2 & b) {
+    prefs.putBool("timer_wakeup", false);
     btnClick = true;
     tft.fillScreen(TFT_GREY); // Clear the screen
     reset(fruit, egg, prot, prep, misc);
@@ -218,6 +225,8 @@ void store() {
  */
 void go_sleep() {
   store();
+  digitalWrite(BATTHIGH, LOW);
+  digitalWrite(BATT_LOW, LOW);
 
 #ifdef DEEP_SLEEP
   tft.fillScreen(TFT_GREY);
@@ -226,13 +235,18 @@ void go_sleep() {
   delay(1000);
 #endif
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
-  esp_sleep_enable_ext1_wakeup(static_cast<gpio_num_t>(PINS), ESP_EXT1_WAKEUP_ANY_HIGH);
+
+  //esp_sleep_enable_timer_wakeup(20000);
+  //esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+  //prefs.putBool("timer_wakeup", true);
 
 #ifdef DEEP_SLEEP
-  // DEEP SLEEP //
+  // DEEP SLEEP // 
+  esp_sleep_enable_ext1_wakeup(static_cast<gpio_num_t>(CLEARBTT), ESP_EXT1_WAKEUP_ANY_HIGH);
   esp_deep_sleep_start();
 #else 
   // LIGHT SLEEP //
+  esp_sleep_enable_ext1_wakeup(static_cast<gpio_num_t>(PINS), ESP_EXT1_WAKEUP_ANY_HIGH);
   gpio_wakeup_enable(static_cast<gpio_num_t>(PINS), GPIO_INTR_HIGH_LEVEL);
   esp_sleep_enable_gpio_wakeup();
   esp_light_sleep_start();
@@ -264,52 +278,58 @@ void wakeup() {
     case FRUITVEG:
       ++fruit;
       output = "fruit";
+//      prefs.putBool("timer_wakeup", false);
       break;
     case EGGDAIRY:
       ++egg;
       output = "dairy";
+//      prefs.putBool("timer_wakeup", false);
       break;
     case PROTEINS:
       ++prot;
       output = "protein";
+//      prefs.putBool("timer_wakeup", false);
       break;
     case PREPARED:
       ++prep;
       output = "prep";
+//      prefs.putBool("timer_wakeup", false);
       break;
     case MISCELLA:
       output = "misc";
+//      prefs.putBool("timer_wakeup", false);
       ++misc;
       break;
     case CLEARBTT:
       output = "clear";
+//      prefs.putBool("timer_wakeup", false);
       break;
     default:
       output = "Unkown";
       break;
   }
-  tft.fillScreen(TFT_GREY); // Clear the screen
+  tft.fillScreen(TFT_GREY);     // Clear the screen
   tft.setCursor(0,0,4);         // Set cursor to front, use font #4
-  tft.setTextColor(TFT_RED);  // Set color to be red
+  tft.setTextColor(TFT_RED);    // Set color to be red
   tft.print("Wake by: " ); tft.println(output.c_str());
   tft.print("Battery (V): "); tft.println(battery_level);
   tft.print("Solar (V): "  ); tft.println(solar_level);
   delay(1000);
-  tft.fillScreen(TFT_GREY); // Clear the screen
+  tft.fillScreen(TFT_GREY);     // Clear the screen
   tft.setTextColor(TFT_WHITE);  // Set color to be white
 }
 
 void setup() {
   // Create a namespace named 'values' in the preferences object;
+  // This lets us store the variables in the flash memory instead of RAM
   prefs.begin("values", false);
   
-  /*
-  ADC_EN is the ADC detection enable port
-  If the USB port is used for power supply, it is turned on by default.
-  If it is powered by battery, it needs to be set to high level
-  */
-  //pinMode(ADC_EN, OUTPUT);
-  //digitalWrite(ADC_EN, HIGH);
+  /* ADC_EN is the ADC detection enable port
+   * If the USB port is used for power supply, it is turned on by default.
+   * If it is powered by battery, it needs to be set to HIGH
+   */
+  pinMode(ADC_EN, OUTPUT);
+  digitalWrite(ADC_EN, HIGH);
   pinMode(BATTHIGH, OUTPUT);
   pinMode(BATT_LOW, OUTPUT);
   tft.init();                   // Initialize display
@@ -341,21 +361,29 @@ void loop() {
     tft.fillScreen(TFT_GREY); // Clear the screen 
     wakeup();
     ++init_;
-  } else {
+  } else if (init_ > 10) {} 
+    else {
     ++init_;
   }
 
   battery_level = analogReadMilliVolts(ADC_BAT) / 1000.0;
-  solar_level = analogReadMilliVolts(ADC_SOL) / 1000.0;
+  solar_level   = analogReadMilliVolts(ADC_SOL) / 1000.0;
 
-  if (battery_level < 3.0) {  
+  if (battery_level < 2.0) {  
     digitalWrite(BATTHIGH, LOW);
     digitalWrite(BATT_LOW, HIGH);
   } else {
     digitalWrite(BATTHIGH, HIGH);
     digitalWrite(BATT_LOW, LOW);
   }
-  
+  /*
+  if (prefs.getBool("timer_wakeup") && timepassed >= SMALL_TIME) {
+    timepassed = 0;
+    go_sleep();
+  } else {
+    ++timepassed;
+  }
+*/
   // Hard reset handler: 
   if (clear1 && clear2 && clear3) {
     clear1 = false;
@@ -370,13 +398,20 @@ void loop() {
     tft.fillScreen(TFT_GREY); // Clear the screen 
     counter = 0;
   }
+
+  if (cleartimer == 10) {
+    clear1 = false;
+    clear2 = false;
+    clear3 = false;
+    cleartimer = 0;
+  } else {
+    ++cleartimer;
+  }
+
   ++counter;
   if (counter <= TIME_AWAKE){
     button_loop(); // Loop through and poll the buttons.
     // So that hard reset handler isn't just set off by accident 
-    clear1 = false;
-    clear2 = false;
-    clear3 = false;
   } else {
     counter = 0;
     go_sleep();
