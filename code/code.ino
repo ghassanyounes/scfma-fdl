@@ -22,10 +22,12 @@
 #include <string>
 using std::string;
 
+#define DEEP_SLEEP
+
 // 10 minutes: 600000000
 //  7 minutes: 420000000
 //  5 minutes: 300000000
-#define TIME_AWAKE 1000
+#define TIME_AWAKE 5000
 
 // Constants - colors and GPIO pins
 #define TFT_GREY 0x5AEB // New color
@@ -46,22 +48,20 @@ using std::string;
 // the active pins (38,37,36 et cetera) to wake up the device
 #define PINS 1 << FRUITVEG | 1 << EGGDAIRY | 1 << PROTEINS | 1 << PREPARED | 1 << MISCELLA | 1 << CLEARBTT
 
+#define ADC_EN  14  //ADC_EN is the ADC detection enable port
+#define ADC_BAT 33
+#define ADC_SOL 32
 
-#define ADC_BATT 15
-#define ADCSOLAR  2
+bool clear1 = false, clear2 = false;
 
-
-TFT_eSPI tft = TFT_eSPI(); // Invoke library, pins defined in user_setup.h
-// instantiate and intialize cache variables
-int counter = 0;
-int fruit = 0, egg = 0, prot = 0, prep = 0, misc = 0;
-int f_fruit = 0, f_egg = 0, f_prot = 0, f_prep = 0, f_misc = 0;
-// if button pressed
-bool btnClick = false;
-// if initialized
-int init_ = 0;
-double battery_level = 0.0;
-double solar_level = 0.0;
+TFT_eSPI tft = TFT_eSPI();  // Invoke library, pins defined in user_setup.h
+int counter = 0;            // Counter for time to sleep
+int fruit = 0, egg = 0, prot = 0, prep = 0, misc = 0;           // instantiate and intialize cache variables
+int f_fruit = 0, f_egg = 0, f_prot = 0, f_prep = 0, f_misc = 0; // instantiate and initialize flash storage
+bool btnClick = false; // if a button is pressed
+int init_ = 0; // if initialized check
+double battery_level = 0.0; // checks the battery level
+double solar_level = 0.0;   // checks the solar panel power level
 
 Preferences prefs; // Data to be preserved after reboots
 
@@ -75,7 +75,7 @@ Button2 cl(CLEARBTT); // clear (upper button)
 Button2 btm(BTMBUTT); // bottom onboard button
 Button2 top(TOPBUTT); // top onboard button
 
-//! Long time delay, it is recommended to use shallow sleep, which can effectively reduce the current consumption
+//! For longer delays it's best to use light sleep, especially to reduce current consumption
 void espDelay(int ms)
 {
     esp_sleep_enable_timer_wakeup(ms * 1000);
@@ -83,35 +83,16 @@ void espDelay(int ms)
     esp_light_sleep_start();
 }
 
+// When clearing or undoing 
 void reset(int fm, int em, int pom, int pem, int mm) {
   fruit -= fm, egg -= em, prot -= pom, prep -= pem, misc -= mm;
 }
 
+// Button press handlers and routines
 void button_init()
 {
   tft.fillScreen(TFT_GREY); // Clear the screen 
   btnClick = true;
-// // Force long sleep by using small on-board button
-//   top.setLongClickHandler([](Button2 & b) {
-//       btnClick = false;
-//       int r = digitalRead(TFT_BL);
-//       tft.fillScreen(TFT_BLACK);
-//       tft.setTextColor(TFT_GREEN, TFT_BLACK);
-//       tft.setTextDatum(MC_DATUM);
-//       tft.drawString("Press again to wake up",  tft.width() / 2, tft.height() / 2 );
-//       espDelay(6000);
-//       digitalWrite(TFT_BL, !r);
-
-//       tft.writecommand(TFT_DISPOFF);
-//       tft.writecommand(TFT_SLPIN);
-//       //After using light sleep, you need to disable timer wake, because here use external IO port to wake up
-//       esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
-//       // esp_sleep_enable_ext1_wakeup(GPIO_SEL_35, ESP_EXT1_WAKEUP_ALL_LOW);
-//       //esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, 0);
-//       delay(200);
-//       esp_deep_sleep_start();
-//   });
-
 
   //Short button click event handling
   fv.setPressedHandler([](Button2 & b) {
@@ -149,8 +130,20 @@ void button_init()
     reset(fruit, egg, prot, prep, misc);
   });
 
+  btm.setPressedHandler([](Button2 & b) {
+    tft.fillScreen(TFT_GREY); // Clear the screen
+    tft.setCursor(0,0,4);         // Set cursor to front, use font #4
+    tft.setTextColor(TFT_RED);  // Set color to be red
+    tft.print("Battery Status "); tft.println(battery_level);
+    tft.print("Solar Status "); tft.println(solar_level);
+    delay(5000);
+    tft.fillScreen(TFT_GREY); // Clear the screen
+    tft.setTextColor(TFT_WHITE);  // Set color to be white
+    btnClick = true;
+  });
+
   // Erase everything while long clicking the clear button
-  btm.setLongClickHandler([](Button2 & b) {
+  top.setLongClickHandler([](Button2 & b) {
     btnClick = true;
     tft.fillScreen(TFT_GREY); // Clear the screen
     tft.setCursor(0,0,4);         // Set cursor to front, use font #4
@@ -170,20 +163,9 @@ void button_init()
     prep  = 0;
     misc  = 0;
   });
-
-  btm.setPressedHandler([](Button2 & b) {
-    tft.fillScreen(TFT_GREY); // Clear the screen
-    tft.setCursor(0,0,4);         // Set cursor to front, use font #4
-    tft.setTextColor(TFT_RED);  // Set color to be red
-    tft.print("Battery Status "); tft.println(battery_level);
-    tft.print("Solar Status "); tft.println(solar_level);
-    delay(5000);
-    tft.fillScreen(TFT_GREY); // Clear the screen
-    tft.setTextColor(TFT_WHITE);  // Set color to be white
-    btnClick = true;
-  });
 }
 
+// Store the variables in the EEPROM flash storage
 void store() { 
   f_fruit += fruit;
   f_egg   += egg;
@@ -202,6 +184,21 @@ void store() {
   misc  = 0;
 }
 
+// Go to sleep - uses deep sleep if line 25 (#define DEEP_SLEEP) is uncommented;
+/*
+ * Perks of light sleep: 
+ * wakes up from any button 
+ * 
+ * Cons of light sleep:
+ * Doesn't seem to register which GPIO woke it up
+ * Uses more current
+ * 
+ * Perks of deep sleep: 
+ * Much less current usage
+ * 
+ * Cons of deep sleep: 
+ * Only 3 of the GPIO pins used for the buttons can wake it up
+ */
 void go_sleep() {
   store();
   tft.fillScreen(TFT_GREY);
@@ -210,7 +207,7 @@ void go_sleep() {
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
   esp_sleep_enable_ext1_wakeup(static_cast<gpio_num_t>(PINS), ESP_EXT1_WAKEUP_ANY_HIGH);
 
-#if 1
+#ifdef DEEP_SLEEP
   // DEEP SLEEP //
   esp_deep_sleep_start();
 #else 
@@ -221,6 +218,7 @@ void go_sleep() {
 #endif
 }
 
+// Checks the input for each button
 void button_loop() 
 {
   fv.loop();
@@ -233,6 +231,8 @@ void button_loop()
   top.loop();
 }
 
+// On wakeup, will read which button it was woken up by. Only seems to work with deep sleep???
+///TODO: make light sleep display which button woke it up
 void wakeup() {
   static bool once = false;
   //if (!once) {
@@ -288,9 +288,10 @@ void setup() {
   If the USB port is used for power supply, it is turned on by default.
   If it is powered by battery, it needs to be set to high level
   */
-//  pinMode(ADC_EN, OUTPUT);
-//  digitalWrite(ADC_EN, HIGH);
-
+  //pinMode(ADC_EN, OUTPUT);
+  //digitalWrite(ADC_EN, HIGH);
+  pinMode(BATTHIGH, OUTPUT);
+  pinMode(BATT_LOW, OUTPUT);
   tft.init();                   // Initialize display
   tft.setRotation(3);           // Set display to the correct orientation
   tft.fillScreen(TFT_GREY);     // Fill background  
@@ -300,7 +301,8 @@ void setup() {
   button_init();                // Initialize buttons
   // set cache values to -1 since they will increase by 1 upon first read
   fruit = -1, egg = -1, prot = -1, prep = -1, misc = -1;
-
+  digitalWrite(BATTHIGH, HIGH);
+  digitalWrite(BATT_LOW, HIGH);
 }
 
 void loop() {
@@ -325,6 +327,9 @@ void loop() {
     ++init_;
   }
 
+  battery_level = analogReadMilliVolts(ADC_BAT) / 1000.0;
+  solar_level = analogReadMilliVolts(ADC_SOL) / 1000.0;
+  
   // Button loop
   if (btnClick) {
     btnClick = false; // reset trigger state after it was pressed

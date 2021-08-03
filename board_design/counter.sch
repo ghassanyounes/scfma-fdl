@@ -7261,11 +7261,6 @@ part number 2062-2P from STA</description>
 </net>
 <net name="ADCSOL" class="0">
 <segment>
-<pinref part="U$1" gate="G$1" pin="15"/>
-<wire x1="66.04" y1="73.66" x2="58.42" y2="73.66" width="0.1524" layer="91"/>
-<label x="55.88" y="73.66" size="1.778" layer="95"/>
-</segment>
-<segment>
 <pinref part="R7" gate="G$1" pin="2"/>
 <pinref part="R8" gate="G$1" pin="2"/>
 <wire x1="45.72" y1="109.22" x2="45.72" y2="104.14" width="0.1524" layer="91"/>
@@ -7274,13 +7269,13 @@ part number 2062-2P from STA</description>
 <junction x="45.72" y="104.14"/>
 <label x="50.8" y="104.14" size="1.778" layer="95"/>
 </segment>
+<segment>
+<pinref part="U$1" gate="G$1" pin="33"/>
+<wire x1="93.98" y1="73.66" x2="101.6" y2="73.66" width="0.1524" layer="91"/>
+<label x="99.06" y="73.66" size="1.778" layer="95"/>
+</segment>
 </net>
 <net name="ADCBAT" class="0">
-<segment>
-<pinref part="U$1" gate="G$1" pin="2"/>
-<wire x1="66.04" y1="76.2" x2="58.42" y2="76.2" width="0.1524" layer="91"/>
-<label x="55.88" y="76.2" size="1.778" layer="95"/>
-</segment>
 <segment>
 <pinref part="R9" gate="G$1" pin="2"/>
 <pinref part="R10" gate="G$1" pin="2"/>
@@ -7289,6 +7284,11 @@ part number 2062-2P from STA</description>
 <wire x1="104.14" y1="104.14" x2="109.22" y2="104.14" width="0.1524" layer="91"/>
 <junction x="104.14" y="104.14"/>
 <label x="106.68" y="101.6" size="1.778" layer="95"/>
+</segment>
+<segment>
+<pinref part="U$1" gate="G$1" pin="32"/>
+<wire x1="93.98" y1="76.2" x2="101.6" y2="76.2" width="0.1524" layer="91"/>
+<label x="99.06" y="76.2" size="1.778" layer="95"/>
 </segment>
 </net>
 <net name="BAT+" class="0">
